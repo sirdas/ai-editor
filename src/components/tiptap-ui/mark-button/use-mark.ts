@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react"
 import type { Editor } from "@tiptap/react"
 
 // --- Hooks ---
-import { useTiptapEditor } from "#/hooks/use-tiptap-editor"
+import { useTiptapEditor } from "@/hooks/use-tiptap-editor"
 
 // --- Lib ---
-import { isMarkInSchema, isNodeTypeSelected } from "#/lib/tiptap-utils"
+import { isMarkInSchema, isNodeTypeSelected } from "@/lib/tiptap-utils"
 
 // --- Icons ---
 import { BoldIcon } from "@/components/tiptap-icons/bold-icon"

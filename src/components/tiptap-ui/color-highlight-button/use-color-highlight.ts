@@ -5,15 +5,15 @@ import type { Editor } from "@tiptap/react"
 import { useHotkeys } from "react-hotkeys-hook"
 
 // --- Hooks ---
-import { useTiptapEditor } from "#/hooks/use-tiptap-editor"
-import { useIsBreakpoint } from "#/hooks/use-is-breakpoint"
+import { useTiptapEditor } from "@/hooks/use-tiptap-editor"
+import { useIsBreakpoint } from "@/hooks/use-is-breakpoint"
 
 // --- Lib ---
 import {
   isMarkInSchema,
   isNodeTypeSelected,
   isExtensionAvailable,
-} from "#/lib/tiptap-utils"
+} from "@/lib/tiptap-utils"
 
 // --- Icons ---
 import { HighlighterIcon } from "@/components/tiptap-icons/highlighter-icon"

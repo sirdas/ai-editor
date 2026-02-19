@@ -2,7 +2,7 @@ import type { Editor } from "@tiptap/react";
 import { useCallback, useState } from "react";
 
 // --- Hooks ---
-import { useTiptapEditor } from "#/hooks/use-tiptap-editor";
+import { useTiptapEditor } from "@/hooks/use-tiptap-editor";
 
 // --- Icons ---
 import { ChevronDownIcon } from "@/components/tiptap-icons/chevron-down-icon";

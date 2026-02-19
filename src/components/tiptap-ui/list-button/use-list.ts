@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/react"
 import { NodeSelection, TextSelection } from "@tiptap/pm/state"
 
 // --- Hooks ---
-import { useTiptapEditor } from "#/hooks/use-tiptap-editor"
+import { useTiptapEditor } from "@/hooks/use-tiptap-editor"
 
 // --- Icons ---
 import { ListIcon } from "@/components/tiptap-icons/list-icon"
@@ -20,7 +20,7 @@ import {
   isNodeTypeSelected,
   isValidPosition,
   selectionWithinConvertibleTypes,
-} from "#/lib/tiptap-utils"
+} from "@/lib/tiptap-utils"
 
 export type ListType = "bulletList" | "orderedList" | "taskList"
 

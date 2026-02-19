@@ -1,10 +1,10 @@
 import { forwardRef, useCallback } from "react"
 
 // --- Hooks ---
-import { useTiptapEditor } from "#/hooks/use-tiptap-editor"
+import { useTiptapEditor } from "@/hooks/use-tiptap-editor"
 
 // --- Lib ---
-import { parseShortcutKeys } from "#/lib/tiptap-utils"
+import { parseShortcutKeys } from "@/lib/tiptap-utils"
 
 // --- Tiptap UI ---
 import type { UseCodeBlockConfig } from "@/components/tiptap-ui/code-block-button"
