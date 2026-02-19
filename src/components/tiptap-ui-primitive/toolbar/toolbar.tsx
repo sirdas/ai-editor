@@ -1,9 +1,9 @@
 import { forwardRef, useCallback, useEffect, useRef, useState } from "react"
 import { Separator } from "@/components/tiptap-ui-primitive/separator"
 import "@/components/tiptap-ui-primitive/toolbar/toolbar.scss"
-import { cn } from "#/lib/tiptap-utils"
-import { useMenuNavigation } from "#/hooks/use-menu-navigation"
 import { useComposedRef } from "#/hooks/use-composed-ref"
+import { useMenuNavigation } from "#/hooks/use-menu-navigation"
+import { cn } from "#/lib/tiptap-utils"
 
 type BaseProps = React.HTMLAttributes<HTMLDivElement>
 
@@ -99,18 +99,18 @@ export const Toolbar = forwardRef<HTMLDivElement, ToolbarProps>(
 )
 Toolbar.displayName = "Toolbar"
 
-export const ToolbarGroup = forwardRef<HTMLDivElement, BaseProps>(
-  ({ children, className, ...props }, ref) => (
-    <div
-      ref={ref}
-      role="group"
-      className={cn("tiptap-toolbar-group", className)}
-      {...props}
-    >
-      {children}
-    </div>
-  )
-)
+export const ToolbarGroup = forwardRef<
+  HTMLFieldSetElement,
+  React.HTMLAttributes<HTMLFieldSetElement>
+>(({ children, className, ...props }, ref) => (
+  <fieldset
+    ref={ref}
+    className={cn("tiptap-toolbar-group", className)}
+    {...props}
+  >
+    {children}
+  </fieldset>
+))
 ToolbarGroup.displayName = "ToolbarGroup"
 
 export const ToolbarSeparator = forwardRef<HTMLDivElement, BaseProps>(

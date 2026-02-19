@@ -325,7 +325,8 @@ const ImageUploadDragArea: React.FC<ImageUploadDragAreaProps> = ({
   }
 
   return (
-    <div
+    <section
+      aria-label="Image drop zone"
       className={`tiptap-image-upload-drag-area ${isDragActive ? "drag-active" : ""} ${isDragOver ? "drag-over" : ""}`}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
@@ -333,7 +334,7 @@ const ImageUploadDragArea: React.FC<ImageUploadDragAreaProps> = ({
       onDrop={handleDrop}
     >
       {children}
-    </div>
+    </section>
   )
 }
 
