@@ -1,5 +1,5 @@
 import { forwardRef, useMemo, useRef, useState } from "react"
-import { type Editor } from "@tiptap/react"
+import type { Editor } from "@tiptap/react"
 
 // --- Hooks ---
 import { useMenuNavigation } from "#/hooks/use-menu-navigation"
