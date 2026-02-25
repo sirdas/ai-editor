@@ -13,6 +13,12 @@ import { Highlight } from "@tiptap/extension-highlight"
 import { Subscript } from "@tiptap/extension-subscript"
 import { Superscript } from "@tiptap/extension-superscript"
 import { Selection } from "@tiptap/extensions"
+import Collaboration from "@tiptap/extension-collaboration"
+import CollaborationCaret from "@tiptap/extension-collaboration-caret"
+
+// --- Collaboration & Yjs ---
+import { HocuspocusProvider } from "@hocuspocus/provider"
+import * as Y from "yjs"
 
 // --- UI Primitives ---
 import { Button } from "@/components/tiptap-ui-primitive/button"
@@ -73,7 +79,67 @@ import { handleImageUpload, MAX_FILE_SIZE } from "@/lib/tiptap-utils"
 // --- Styles ---
 import "@/components/tiptap-templates/simple/simple-editor.scss"
 
-import content from "@/components/tiptap-templates/simple/data/content.json"
+
+const room = "room-1"
+const colors = [
+  "#958DF1",
+  "#F98181",
+  "#FBBC88",
+  "#FAF594",
+  "#70CFF8",
+  "#94FADB",
+  "#B9F18D",
+]
+const names = [
+  "Lea Thompson",
+  "Cyndi Lauper",
+  "Tom Cruise",
+  "Madonna",
+  "Jerry Hall",
+  "Joan Collins",
+  "Winona Ryder",
+  "Christina Applegate",
+  "Alyssa Milano",
+  "Molly Ringwald",
+  "Ally Sheedy",
+  "Debbie Harry",
+  "Olivia Newton-John",
+  "Elton John",
+  "Michael J. Fox",
+  "Axl Rose",
+  "Emilio Estevez",
+  "Ralph Macchio",
+  "Rob Lowe",
+  "Jennifer Grey",
+  "Mickey Rourke",
+  "John Cusack",
+  "Matthew Broderick",
+  "Justine Bateman",
+  "Lisa Bonet",
+]
+
+const getRandomElement = (list: string[]) =>
+  list[Math.floor(Math.random() * list.length)]
+
+const getRandomColor = () => getRandomElement(colors)
+const getRandomName = () => getRandomElement(names)
+
+const ydoc = new Y.Doc()
+const websocketProvider = new HocuspocusProvider({
+  url: `wss://7j9y6m10.collab.tiptap.cloud`,
+  name: room,
+  document: ydoc,
+})
+
+const getInitialUser = () => {
+  if (typeof window === "undefined") return { name: "Anonymous", color: "#ccc" }
+  return (
+    JSON.parse(localStorage.getItem("currentUser") || "null") || {
+      name: getRandomName(),
+      color: getRandomColor(),
+    }
+  )
+}
 
 const MainToolbarContent = ({
   onHighlighterClick,
@@ -186,6 +252,8 @@ const MobileToolbarContent = ({
 export function SimpleEditor() {
   const isMobile = useIsBreakpoint()
   const { height } = useWindowSize()
+  const [status, setStatus] = useState("connecting")
+  const [currentUser, setCurrentUser] = useState(getInitialUser)
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">(
     "main"
   )
@@ -193,6 +261,7 @@ export function SimpleEditor() {
 
   const editor = useEditor({
     immediatelyRender: false,
+    shouldRerenderOnTransaction: false,
     editorProps: {
       attributes: {
         autocomplete: "off",
@@ -209,6 +278,13 @@ export function SimpleEditor() {
           openOnClick: false,
           enableClickSelection: true,
         },
+        undoRedo: false,
+      }),
+      Collaboration.configure({
+        document: ydoc,
+      }),
+      CollaborationCaret.configure({
+        provider: websocketProvider,
       }),
       HorizontalRule,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
@@ -228,8 +304,30 @@ export function SimpleEditor() {
         onError: (error) => console.error("Upload failed:", error),
       }),
     ],
-    content,
   })
+
+  useEffect(() => {
+    // Update status changes
+    websocketProvider.on("status", (event: any) => {
+      setStatus(event.status)
+    })
+  }, [])
+
+  // Save current user to localStorage and emit to editor
+  useEffect(() => {
+    if (editor && currentUser) {
+      localStorage.setItem("currentUser", JSON.stringify(currentUser))
+      ;(editor.chain().focus() as any).updateUser(currentUser).run()
+    }
+  }, [editor, currentUser])
+
+  const setName = () => {
+    const name = (window.prompt("Name") || "").trim().substring(0, 32)
+
+    if (name) {
+      setCurrentUser({ ...currentUser, name })
+    }
+  }
 
   const rect = useCursorVisibility({
     editor,
@@ -244,6 +342,21 @@ export function SimpleEditor() {
 
   return (
     <div className="simple-editor-wrapper">
+      <div className="simple-editor-header">
+        <div className="simple-editor-status">
+          <div className={`status-dot status-dot--${status}`} />
+          {status === "connected"
+            ? `${(editor?.storage as any).collaborationCaret.users.length} user${
+                (editor?.storage as any).collaborationCaret.users.length === 1
+                  ? ""
+                  : "s"
+              } online`
+            : "offline"}
+        </div>
+        <button className="simple-editor-user-button" onClick={setName}>
+          {currentUser.name}
+        </button>
+      </div>
       <EditorContext.Provider value={{ editor }}>
         <Toolbar
           ref={toolbarRef}
