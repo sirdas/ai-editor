@@ -1,213 +1,82 @@
-Welcome to your new TanStack Start app! 
+# AI Editor
 
-# Getting Started
+A collaborative text editor powered by Claude AI. Write documents together with other users and with Claude as an AI co-author — getting inline suggestions, edits, and review comments in real time.
 
-To run this application:
+**Live demo:** [ai-editor-eight-kappa.vercel.app](https://ai-editor-eight-kappa.vercel.app/)
+
+![Editor overview](docs/screenshots/editor-overview.png)
+
+You can comment on the whole document or select text and click the "add inline comment" button in the toolbar:
+
+![Inline comment](docs/screenshots/inline-comment.png)
+
+You can also ask AI Editor to review the document and add comments:
+
+![AI review](docs/screenshots/ai-review.png)
+
+To address the AI Editor you can use "@ai-editor":
+
+![AI command](docs/screenshots/ai-command.png)
+
+
+## Features
+
+- **Real-time collaboration** — multiple users can edit the same document simultaneously (powered by Yjs + Hocuspocus)
+- **AI co-authorship** — Claude participates as an author, responding to comments directed at it and making edits when given actionable feedback
+- **Inline comments** — highlight text and leave comments (Google Docs style); Claude can reply and act on them
+- **AI review** — manually request a review from Claude, or let it review changes as they come in
+- **Highlight actions** — select text to trigger Claude actions like translation, coherence improvements, or reorganization
+- **Document instructions** — give Claude context and editorial guidelines per document
+- **Multiple documents** — create and switch between documents with a flat file structure
+
+## Tech stack
+
+- [TanStack Start](https://tanstack.com/start) — full-stack React framework
+- [Tiptap](https://tiptap.dev/) — rich text editor
+- [Yjs](https://yjs.dev/) + [Hocuspocus](https://hocuspocus.dev/) — real-time collaboration
+- [TanStack Query](https://tanstack.com/query) — data fetching
+- [Vercel AI SDK](https://sdk.vercel.ai/) — AI streaming and tool use
+- [PostgreSQL](https://www.postgresql.org/) — document and comment storage
+- [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) — styling
+
+## Running locally
+
+### Prerequisites
+
+- Node.js 18+
+- A PostgreSQL database
+- An [Anthropic API key](https://console.anthropic.com/)
+
+### Setup
+
+1. Clone the repo and install dependencies:
 
 ```bash
+git clone https://github.com/your-username/ai-editor.git
+cd ai-editor
 npm install
+```
+
+2. Create a .env file and fill in your values:
+
+Required environment variables:
+
+```
+DATABASE_URL=postgresql://...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+3. Start the development server:
+
+```bash
 npm run dev
 ```
 
-# Building For Production
+The app will be available at `http://localhost:3000`.
 
-To build this application for production:
+## Building for production
 
 ```bash
 npm run build
+npm run start
 ```
-
-## Testing
-
-This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
-
-```bash
-npm run test
-```
-
-## Styling
-
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
-
-### Removing Tailwind CSS
-
-If you prefer not to use Tailwind CSS:
-
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Uninstall the packages: `npm install @tailwindcss/vite tailwindcss -D`
-
-## Linting & Formatting
-
-This project uses [Biome](https://biomejs.dev/) for linting and formatting. The following scripts are available:
-
-
-```bash
-npm run lint
-npm run format
-npm run check
-```
-
-
-## Shadcn
-
-Add components using the latest version of [Shadcn](https://ui.shadcn.com/).
-
-```bash
-pnpm dlx shadcn@latest add button
-```
-
-
-
-## Routing
-
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
-```
-
-Then anywhere in your JSX you can use it like so:
-
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
-```
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-## Server Functions
-
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
-
-```tsx
-import { createServerFn } from '@tanstack/react-start'
-
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-  
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-  
-  return <div>Server time: {time}</div>
-}
-```
-
-## API Routes
-
-You can create API routes by using the `server` property in your route definitions:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
-
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
-```
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
