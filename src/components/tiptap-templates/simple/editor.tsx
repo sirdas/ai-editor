@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { EditorContent, EditorContext, useEditor } from "@tiptap/react"
+import { EditorContent, EditorContext, useCurrentEditor, useEditorState, useEditor } from "@tiptap/react"
 import "tippy.js/dist/tippy.css"
 import { Decoration, DecorationSet } from "@tiptap/pm/view"
 import { Plugin, PluginKey } from "@tiptap/pm/state"
@@ -467,6 +467,12 @@ const MainToolbarContent = ({
   onLinkClick: () => void
   isMobile: boolean
 }) => {
+  const { editor } = useCurrentEditor()
+  const hasSelection = useEditorState({
+    editor,
+    selector: (ctx) => !ctx.editor?.state.selection.empty,
+  })
+
   return (
     <>
       <Spacer />
@@ -531,8 +537,10 @@ const MainToolbarContent = ({
       <ToolbarGroup>
         <Button
           variant="ghost"
-          onClick={() => window.dispatchEvent(new CustomEvent("add-comment"))}
-          tooltip="Add Inline Comment"
+          aria-disabled={!hasSelection}
+          data-disabled={!hasSelection}
+          onClick={() => hasSelection && window.dispatchEvent(new CustomEvent("add-comment"))}
+          tooltip={hasSelection ? "Add Inline Comment" : "Select text to add an inline comment"}
         >
           <MessageSquarePlus className="tiptap-button-icon" />
         </Button>
@@ -643,31 +651,32 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
   const lastUserEditRef = useRef<number>(0)
 
   // AI Editor snackbar
-  const [aiProcessingMessage, setAiProcessingMessage] = useState<string | null>(null)
-  const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // comment-level: derived from aiPending in DB (set by server, cleared when AI finishes)
+  // review-level: local state since review creates new comments rather than updating existing ones
+  const isAiProcessingComment = comments.some((c) => c.aiPending)
+  const [reviewSnackbar, setReviewSnackbar] = useState(false)
+  const reviewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevCommentsRef = useRef<CommentData[]>([])
 
-  const startAiProcessing = (message = "AI Editor is editing the document. Please wait…") => {
-    setAiProcessingMessage(message)
-    if (aiTimeoutRef.current) clearTimeout(aiTimeoutRef.current)
-    aiTimeoutRef.current = setTimeout(() => setAiProcessingMessage(null), 30_000)
-  }
-  const stopAiProcessing = () => {
-    setAiProcessingMessage(null)
-    if (aiTimeoutRef.current) { clearTimeout(aiTimeoutRef.current); aiTimeoutRef.current = null }
+  const startAiProcessing = (message?: string) => {
+    // Only used for the review flow
+    if (message) {
+      setReviewSnackbar(true)
+      if (reviewTimeoutRef.current) clearTimeout(reviewTimeoutRef.current)
+      reviewTimeoutRef.current = setTimeout(() => setReviewSnackbar(false), 60_000)
+    }
   }
 
-  // Hide snackbar when new AI activity arrives (reply or new root comment from AI)
+  // Hide review snackbar when new AI root comment appears (review is done)
   useEffect(() => {
     const prev = prevCommentsRef.current
-    const hasNewAiActivity =
-      comments.some((comment) => {
-        const prevComment = prev.find((c) => c.id === comment.id)
-        const prevReplyCount = prevComment ? prevComment.replies.length : 0
-        return comment.replies.slice(prevReplyCount).some((r) => r.authorId === AI_EDITOR_USER_ID)
-      }) ||
-      comments.some((c) => c.authorId === AI_EDITOR_USER_ID && !prev.find((p) => p.id === c.id))
-    if (hasNewAiActivity) stopAiProcessing()
+    const hasNewAiRootComment = comments.some(
+      (c) => c.authorId === AI_EDITOR_USER_ID && !prev.find((p) => p.id === c.id)
+    )
+    if (hasNewAiRootComment) {
+      setReviewSnackbar(false)
+      if (reviewTimeoutRef.current) { clearTimeout(reviewTimeoutRef.current); reviewTimeoutRef.current = null }
+    }
     prevCommentsRef.current = comments
   }, [comments])
 
@@ -834,7 +843,6 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
     if (Date.now() - lastUserEditRef.current < 2000) return
     if (liveDocument.content && liveDocument.content !== editor.getHTML()) {
       editor.commands.setContent(liveDocument.content)
-      stopAiProcessing()
     }
     if (liveDocument.title && liveDocument.title !== title) {
       setTitle(liveDocument.title)
@@ -874,7 +882,6 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
 
     await createCommentFn({ data: { ...newComment, selectedText } })
     queryClient.invalidateQueries({ queryKey: ['comments', documentId] })
-    startAiProcessing()
 
     editor.chain().setMark("comment", { commentId: id }).run()
 
@@ -1002,7 +1009,6 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
     }
     await addReplyFn({ data: { commentId, documentId, reply } })
     queryClient.invalidateQueries({ queryKey: ["comments", documentId] })
-    startAiProcessing()
   }
 
   const handleAddDocumentComment = async (text: string) => {
@@ -1021,7 +1027,6 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
     await createCommentFn({ data: newComment })
     queryClient.invalidateQueries({ queryKey: ["comments", documentId] })
     setActiveCommentId(id)
-    startAiProcessing()
   }
 
   const handleCommentClick = (id: string) => {
@@ -1063,10 +1068,12 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
 
   return (
     <div className={`editor-wrapper ${isSidebarOpen ? "sidebar-visible" : ""}`}>
-      {aiProcessingMessage && (
+      {(isAiProcessingComment || reviewSnackbar) && (
         <div className="ai-snackbar">
           <span className="ai-snackbar-dot" />
-          {aiProcessingMessage}
+          {reviewSnackbar
+            ? "AI Editor is reviewing the document. Please wait…"
+            : "AI Editor is working on your comment. Please wait…"}
         </div>
       )}
       <div className="editor-header">

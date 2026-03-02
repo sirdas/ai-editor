@@ -1,7 +1,20 @@
 import { Pool } from 'pg';
 
+const rawConnectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres'
+const needsSsl = rawConnectionString.includes('sslmode=require')
+
+// Strip sslmode from the URL — we pass ssl via the pool option instead,
+// which avoids pg's deprecation warning about sslmode semantics
+function stripSslMode(url: string): string {
+  const [base, qs] = url.split('?')
+  if (!qs) return url
+  const remaining = qs.split('&').filter(p => !p.startsWith('sslmode='))
+  return remaining.length ? `${base}?${remaining.join('&')}` : base
+}
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres'
+  connectionString: stripSslMode(rawConnectionString),
+  ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
 });
 
 // Initialize the database schema
@@ -29,9 +42,11 @@ function getInitPromise() {
         resolved BOOLEAN DEFAULT FALSE,
         type TEXT NOT NULL,
         replies JSONB DEFAULT '[]'::jsonb,
-        "selectedText" TEXT
+        "selectedText" TEXT,
+        "aiPending" BOOLEAN DEFAULT FALSE
       );
       ALTER TABLE comments ADD COLUMN IF NOT EXISTS "selectedText" TEXT;
+      ALTER TABLE comments ADD COLUMN IF NOT EXISTS "aiPending" BOOLEAN DEFAULT FALSE;
     `).catch(err => {
         console.error('Failed to create documents table:', err)
         initPromise = null; // Retry on next request if it failed
@@ -144,6 +159,8 @@ export interface CommentRecord {
   replies: CommentReply[];
   /** For AI-created inline comments: the exact text to annotate, stored so the client can apply the ProseMirror mark */
   selectedText?: string;
+  /** True while AI is processing this comment; cleared when AI finishes (reply, edit, or skip) */
+  aiPending?: boolean;
   // Joined fields for UI convenience
   authorName?: string;
   authorColor?: string;
@@ -152,14 +169,14 @@ export interface CommentRecord {
 export async function getComments(documentId: string): Promise<CommentRecord[]> {
   await getInitPromise();
   const result = await pool.query(`
-    SELECT c.id, c."documentId", c."authorId", c.text, c."createdAt", c.resolved, c.type, c.replies, c."selectedText",
+    SELECT c.id, c."documentId", c."authorId", c.text, c."createdAt", c.resolved, c.type, c.replies, c."selectedText", c."aiPending",
            u.name as "authorName", u.color as "authorColor"
     FROM comments c
     JOIN users u ON c."authorId" = u.id
     WHERE c."documentId" = $1
     ORDER BY c.resolved ASC, c."createdAt" DESC
   `, [documentId]);
-  
+
   return result.rows.map(row => ({
     id: String(row.id),
     documentId: String(row.documentId),
@@ -170,6 +187,7 @@ export async function getComments(documentId: string): Promise<CommentRecord[]> 
     type: row.type as "inline" | "document",
     replies: row.replies || [],
     selectedText: row.selectedText ?? undefined,
+    aiPending: Boolean(row.aiPending),
     authorName: String(row.authorName),
     authorColor: String(row.authorColor)
   }));
@@ -207,7 +225,7 @@ export async function createComment(data: Omit<CommentRecord, "authorName" | "au
   };
 }
 
-export async function updateComment(id: string, updates: Partial<Pick<CommentRecord, "text" | "resolved" | "replies">>): Promise<void> {
+export async function updateComment(id: string, updates: Partial<Pick<CommentRecord, "text" | "resolved" | "replies" | "aiPending">>): Promise<void> {
   await getInitPromise();
   
   const setClauses: string[] = [];
@@ -225,6 +243,10 @@ export async function updateComment(id: string, updates: Partial<Pick<CommentRec
   if (updates.replies !== undefined) {
     setClauses.push(`replies = $${paramIndex++}`);
     values.push(JSON.stringify(updates.replies));
+  }
+  if (updates.aiPending !== undefined) {
+    setClauses.push(`"aiPending" = $${paramIndex++}`);
+    values.push(updates.aiPending);
   }
 
   if (setClauses.length === 0) return;

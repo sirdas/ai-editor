@@ -50,6 +50,7 @@ export async function processCommentWithAI(params: {
   if (isReply && replyAuthorId === AI_EDITOR_USER_ID) return
 
   await ensureAiEditorUser()
+  await updateComment(comment.id, { aiPending: true })
 
   const [document, allComments] = await Promise.all([
     getDocument(documentId),
@@ -193,7 +194,10 @@ ${isAddressed ? "This message is addressed to you — please respond and perform
     }
     await updateComment(comment.id, {
       replies: [...comment.replies, reply],
+      aiPending: false,
     })
+  } else {
+    await updateComment(comment.id, { aiPending: false })
   }
 }
 
@@ -206,9 +210,20 @@ export async function reviewDocumentWithAI(documentId: string): Promise<void> {
   ])
   if (!document) return
 
-  const existingComments = allComments
-    .map((c) => `- [${c.type}] ${c.authorName ?? c.authorId}: ${c.text}`)
-    .join("\n")
+  const formatExistingComment = (c: (typeof allComments)[number]) => {
+    const status = c.resolved ? "RESOLVED" : "OPEN"
+    const header = `- [${status}][${c.type}] ${c.authorName ?? c.authorId}: ${c.text}`
+    if (c.replies.length === 0) return header
+    const replies = c.replies
+      .map((r) => {
+        const name = r.authorId === AI_EDITOR_USER_ID ? AI_EDITOR_NAME : (r.authorName ?? r.authorId)
+        return `    ↳ ${name}: ${r.text}`
+      })
+      .join("\n")
+    return `${header}\n${replies}`
+  }
+
+  const existingComments = allComments.map(formatExistingComment).join("\n")
 
   const systemPrompt = `You are an AI writing editor called "AI Editor" performing an editorial review of a document.
 
@@ -217,14 +232,15 @@ DOCUMENT TITLE: "${document.title}"
 DOCUMENT CONTENT (tiptap-compatible HTML):
 ${document.content ?? "(empty)"}
 
-EXISTING COMMENTS (already raised — do not duplicate):
+EXISTING COMMENTS (with full threads — do not duplicate open feedback; resolved threads are shown for context only):
 ${existingComments || "(none)"}
 
 YOUR TASK:
 Review the document carefully and annotate it using the tools provided. Be selective and useful:
 - Use "addInlineComment" to attach a comment to a specific passage (grammar, clarity, style, consistency, factual concerns, etc.)
 - Use "addDocumentComment" for high-level observations that apply to the document as a whole
-- Do NOT duplicate feedback already covered by existing comments
+- Do NOT duplicate feedback already covered by open (unresolved) comments or their replies
+- Resolved comments indicate issues that have already been addressed — you may reference them but do not re-raise them
 - Prefer targeted inline comments over vague document-level ones
 - When done, call "finishReview" — do not generate any final text response
 
