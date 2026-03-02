@@ -32,6 +32,7 @@ export function ThemeToggle() {
     <Button
       onClick={toggleDarkMode}
       aria-label={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
+      tooltip={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
       variant="ghost"
     >
       {isDarkMode ? (

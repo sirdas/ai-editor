@@ -28,8 +28,10 @@ function getInitPromise() {
         "createdAt" BIGINT NOT NULL,
         resolved BOOLEAN DEFAULT FALSE,
         type TEXT NOT NULL,
-        replies JSONB DEFAULT '[]'::jsonb
+        replies JSONB DEFAULT '[]'::jsonb,
+        "selectedText" TEXT
       );
+      ALTER TABLE comments ADD COLUMN IF NOT EXISTS "selectedText" TEXT;
     `).catch(err => {
         console.error('Failed to create documents table:', err)
         initPromise = null; // Retry on next request if it failed
@@ -140,6 +142,8 @@ export interface CommentRecord {
   resolved: boolean;
   type: "inline" | "document";
   replies: CommentReply[];
+  /** For AI-created inline comments: the exact text to annotate, stored so the client can apply the ProseMirror mark */
+  selectedText?: string;
   // Joined fields for UI convenience
   authorName?: string;
   authorColor?: string;
@@ -148,7 +152,7 @@ export interface CommentRecord {
 export async function getComments(documentId: string): Promise<CommentRecord[]> {
   await getInitPromise();
   const result = await pool.query(`
-    SELECT c.id, c."documentId", c."authorId", c.text, c."createdAt", c.resolved, c.type, c.replies,
+    SELECT c.id, c."documentId", c."authorId", c.text, c."createdAt", c.resolved, c.type, c.replies, c."selectedText",
            u.name as "authorName", u.color as "authorColor"
     FROM comments c
     JOIN users u ON c."authorId" = u.id
@@ -165,6 +169,7 @@ export async function getComments(documentId: string): Promise<CommentRecord[]> 
     resolved: Boolean(row.resolved),
     type: row.type as "inline" | "document",
     replies: row.replies || [],
+    selectedText: row.selectedText ?? undefined,
     authorName: String(row.authorName),
     authorColor: String(row.authorColor)
   }));
@@ -173,13 +178,13 @@ export async function getComments(documentId: string): Promise<CommentRecord[]> 
 export async function createComment(data: Omit<CommentRecord, "authorName" | "authorColor">): Promise<CommentRecord> {
   await getInitPromise();
   await pool.query(`
-    INSERT INTO comments (id, "documentId", "authorId", text, "createdAt", resolved, type, replies)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-  `, [data.id, data.documentId, data.authorId, data.text, data.createdAt, data.resolved, data.type, JSON.stringify(data.replies)]);
+    INSERT INTO comments (id, "documentId", "authorId", text, "createdAt", resolved, type, replies, "selectedText")
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  `, [data.id, data.documentId, data.authorId, data.text, data.createdAt, data.resolved, data.type, JSON.stringify(data.replies), data.selectedText ?? null]);
   
   // Fetch with joined user data to return
   const result = await pool.query(`
-    SELECT c.id, c."documentId", c."authorId", c.text, c."createdAt", c.resolved, c.type, c.replies,
+    SELECT c.id, c."documentId", c."authorId", c.text, c."createdAt", c.resolved, c.type, c.replies, c."selectedText",
            u.name as "authorName", u.color as "authorColor"
     FROM comments c
     JOIN users u ON c."authorId" = u.id
@@ -196,6 +201,7 @@ export async function createComment(data: Omit<CommentRecord, "authorName" | "au
     resolved: Boolean(row.resolved),
     type: row.type as "inline" | "document",
     replies: row.replies || [],
+    selectedText: row.selectedText ?? undefined,
     authorName: String(row.authorName),
     authorColor: String(row.authorColor)
   };

@@ -100,6 +100,49 @@ body,
   50% { opacity: 0.4; transform: scale(0.75); }
 }
 
+.toolbar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.toolbar-scroll-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--tt-toolbar-border-color);
+  border-radius: 4px;
+  background: var(--tt-toolbar-bg-color);
+  color: var(--tt-gray-light-600);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: background 0.1s, color 0.1s;
+
+  .dark & {
+    color: var(--tt-gray-dark-600);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  &:hover {
+    background: var(--tt-gray-light-50);
+    color: var(--tt-gray-light-900);
+
+    .dark & {
+      background: var(--tt-gray-dark-50);
+      color: var(--tt-gray-dark-900);
+    }
+  }
+
+  &--left { left: 2px; }
+  &--right { right: 2px; }
+}
+
 .editor-content {
   width: 100%;
   display: flex;

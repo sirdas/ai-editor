@@ -22,11 +22,11 @@ import { Mark, mergeAttributes } from "@tiptap/core"
 // --- Collaboration & Yjs ---
 // Removed Yjs/Collaboration from this component as it's now DB-backed.
 
-import { MessageSquarePlus, MessageSquare, X, Trash2, CheckCircle2, RotateCcw, Plus, FileText, User } from "lucide-react"
+import { MessageSquarePlus, MessageSquare, X, Trash2, CheckCircle2, RotateCcw, Plus, FileText, User, Sparkles, ChevronLeft, ChevronRight } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   fetchDocuments, fetchDocument, updateDocumentFn, addDocumentFn, deleteDocumentFn,
-  fetchUserFn, createUserFn, updateUserFn, fetchCommentsFn, createCommentFn, addReplyFn, updateCommentFn, deleteCommentFn as serverDeleteCommentFn
+  fetchUserFn, createUserFn, updateUserFn, fetchCommentsFn, createCommentFn, addReplyFn, updateCommentFn, deleteCommentFn as serverDeleteCommentFn, requestAiReviewFn
 } from "@/lib/server-functions"
 import { AI_EDITOR_USER_ID } from "@/lib/ai-editor-constants"
 import { useNavigate } from "@tanstack/react-router"
@@ -523,7 +523,7 @@ const MainToolbarContent = ({
       <ToolbarSeparator />
 
       <ToolbarGroup>
-        <ImageUploadButton text="Add" />
+        <ImageUploadButton />
       </ToolbarGroup>
 
       <ToolbarSeparator />
@@ -531,13 +531,17 @@ const MainToolbarContent = ({
       <ToolbarGroup>
         <Button
           variant="ghost"
-          onClick={() => {
-            // This will be handled in Editor
-            window.dispatchEvent(new CustomEvent("add-comment"))
-          }}
-          title="Add Comment"
+          onClick={() => window.dispatchEvent(new CustomEvent("add-comment"))}
+          tooltip="Add Inline Comment"
         >
           <MessageSquarePlus className="tiptap-button-icon" />
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => window.dispatchEvent(new CustomEvent("ai-review"))}
+          tooltip="Request AI Review"
+        >
+          <Sparkles className="tiptap-button-icon" />
         </Button>
       </ToolbarGroup>
 
@@ -639,29 +643,31 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
   const lastUserEditRef = useRef<number>(0)
 
   // AI Editor snackbar
-  const [aiProcessing, setAiProcessing] = useState(false)
+  const [aiProcessingMessage, setAiProcessingMessage] = useState<string | null>(null)
   const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevCommentsRef = useRef<CommentData[]>([])
 
-  const startAiProcessing = () => {
-    setAiProcessing(true)
+  const startAiProcessing = (message = "AI Editor is editing the document. Please wait…") => {
+    setAiProcessingMessage(message)
     if (aiTimeoutRef.current) clearTimeout(aiTimeoutRef.current)
-    aiTimeoutRef.current = setTimeout(() => setAiProcessing(false), 30_000)
+    aiTimeoutRef.current = setTimeout(() => setAiProcessingMessage(null), 30_000)
   }
   const stopAiProcessing = () => {
-    setAiProcessing(false)
+    setAiProcessingMessage(null)
     if (aiTimeoutRef.current) { clearTimeout(aiTimeoutRef.current); aiTimeoutRef.current = null }
   }
 
-  // Hide snackbar when a new AI reply appears in any comment thread
+  // Hide snackbar when new AI activity arrives (reply or new root comment from AI)
   useEffect(() => {
     const prev = prevCommentsRef.current
-    const hasNewAiReply = comments.some((comment) => {
-      const prevComment = prev.find((c) => c.id === comment.id)
-      const prevReplyCount = prevComment ? prevComment.replies.length : 0
-      return comment.replies.slice(prevReplyCount).some((r) => r.authorId === AI_EDITOR_USER_ID)
-    })
-    if (hasNewAiReply) stopAiProcessing()
+    const hasNewAiActivity =
+      comments.some((comment) => {
+        const prevComment = prev.find((c) => c.id === comment.id)
+        const prevReplyCount = prevComment ? prevComment.replies.length : 0
+        return comment.replies.slice(prevReplyCount).some((r) => r.authorId === AI_EDITOR_USER_ID)
+      }) ||
+      comments.some((c) => c.authorId === AI_EDITOR_USER_ID && !prev.find((p) => p.id === c.id))
+    if (hasNewAiActivity) stopAiProcessing()
     prevCommentsRef.current = comments
   }, [comments])
 
@@ -671,6 +677,29 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
   const [isDrafting, setIsDrafting] = useState(false)
   const [draftComment, setDraftComment] = useState("")
   const toolbarRef = useRef<HTMLDivElement>(null)
+  const [toolbarOverflow, setToolbarOverflow] = useState({ left: false, right: false })
+
+  // Detect toolbar horizontal overflow to show/hide scroll buttons
+  useEffect(() => {
+    const el = toolbarRef.current
+    if (!el) return
+
+    const update = () => {
+      setToolbarOverflow({
+        left: el.scrollLeft > 1,
+        right: el.scrollLeft < el.scrollWidth - el.clientWidth - 1,
+      })
+    }
+
+    update()
+    el.addEventListener("scroll", update, { passive: true })
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => {
+      el.removeEventListener("scroll", update)
+      ro.disconnect()
+    }
+  }, [])
 
   // Force reset state when document id changes
   useEffect(() => {
@@ -865,9 +894,45 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
     return () => window.removeEventListener("add-comment", handleAddComment)
   }, [editor])
 
+  // Apply ProseMirror marks for AI-created inline comments that don't have one yet
   useEffect(() => {
-    // No-op for now
-  }, [])
+    if (!editor) return
+    const { state } = editor
+    const markType = state.schema.marks.comment
+    if (!markType) return
+
+    const currentHtml = editor.getHTML()
+    let tr = state.tr
+    let changed = false
+
+    for (const comment of comments) {
+      if (comment.type !== "inline" || !comment.selectedText) continue
+      if (currentHtml.includes(`data-comment-id="${comment.id}"`)) continue
+
+      state.doc.descendants((node, pos) => {
+        if (!node.isText || !node.text) return
+        const idx = node.text.indexOf(comment.selectedText!)
+        if (idx !== -1) {
+          tr = tr.addMark(pos + idx, pos + idx + comment.selectedText!.length, markType.create({ commentId: comment.id }))
+          changed = true
+          return false
+        }
+      })
+    }
+
+    if (changed) editor.view.dispatch(tr)
+  }, [editor, comments])
+
+  // Trigger AI review
+  useEffect(() => {
+    const handleReview = () => {
+      requestAiReviewFn({ data: documentId }).catch(console.error)
+      startAiProcessing("AI Editor is reviewing the document. Please wait…")
+      setIsSidebarOpen(true)
+    }
+    window.addEventListener("ai-review", handleReview)
+    return () => window.removeEventListener("ai-review", handleReview)
+  }, [documentId])
 
   useEffect(() => {
     if (editor) {
@@ -998,10 +1063,10 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
 
   return (
     <div className={`editor-wrapper ${isSidebarOpen ? "sidebar-visible" : ""}`}>
-      {aiProcessing && (
+      {aiProcessingMessage && (
         <div className="ai-snackbar">
           <span className="ai-snackbar-dot" />
-          AI Editor is editing the document. Please wait…
+          {aiProcessingMessage}
         </div>
       )}
       <div className="editor-header">
@@ -1126,6 +1191,25 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
         )}
 
           <div className="editor-container">
+            <div className="toolbar-wrapper">
+            {toolbarOverflow.left && (
+              <button
+                className="toolbar-scroll-btn toolbar-scroll-btn--left"
+                onMouseDown={(e) => { e.preventDefault(); toolbarRef.current?.scrollBy({ left: -120, behavior: "smooth" }) }}
+                aria-label="Scroll toolbar left"
+              >
+                <ChevronLeft size={14} />
+              </button>
+            )}
+            {toolbarOverflow.right && (
+              <button
+                className="toolbar-scroll-btn toolbar-scroll-btn--right"
+                onMouseDown={(e) => { e.preventDefault(); toolbarRef.current?.scrollBy({ left: 120, behavior: "smooth" }) }}
+                aria-label="Scroll toolbar right"
+              >
+                <ChevronRight size={14} />
+              </button>
+            )}
             <Toolbar
               ref={toolbarRef}
               style={{
@@ -1149,6 +1233,7 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
                 />
               )}
             </Toolbar>
+            </div>
 
             <EditorContent
               editor={editor}

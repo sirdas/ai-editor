@@ -6,6 +6,7 @@ import {
   updateDocument,
   updateComment,
   getComments,
+  createComment,
   getUser,
   createUser,
   type CommentRecord,
@@ -159,7 +160,7 @@ ${isAddressed ? "This message is addressed to you — please respond and perform
       },
 
       resolveComment: {
-        description: "Mark this comment thread as resolved after you have addressed it.",
+        description: "Mark this comment thread as resolved. Only use this when the user has explicitly asked you to resolve the comment.",
         inputSchema: z.object({}),
         execute: async (_input: Record<string, never>) => {
           await updateComment(comment.id, { resolved: true })
@@ -194,4 +195,100 @@ ${isAddressed ? "This message is addressed to you — please respond and perform
       replies: [...comment.replies, reply],
     })
   }
+}
+
+export async function reviewDocumentWithAI(documentId: string): Promise<void> {
+  await ensureAiEditorUser()
+
+  const [document, allComments] = await Promise.all([
+    getDocument(documentId),
+    getComments(documentId),
+  ])
+  if (!document) return
+
+  const existingComments = allComments
+    .map((c) => `- [${c.type}] ${c.authorName ?? c.authorId}: ${c.text}`)
+    .join("\n")
+
+  const systemPrompt = `You are an AI writing editor called "AI Editor" performing an editorial review of a document.
+
+DOCUMENT TITLE: "${document.title}"
+
+DOCUMENT CONTENT (tiptap-compatible HTML):
+${document.content ?? "(empty)"}
+
+EXISTING COMMENTS (already raised — do not duplicate):
+${existingComments || "(none)"}
+
+YOUR TASK:
+Review the document carefully and annotate it using the tools provided. Be selective and useful:
+- Use "addInlineComment" to attach a comment to a specific passage (grammar, clarity, style, consistency, factual concerns, etc.)
+- Use "addDocumentComment" for high-level observations that apply to the document as a whole
+- Do NOT duplicate feedback already covered by existing comments
+- Prefer targeted inline comments over vague document-level ones
+- When done, call "finishReview" — do not generate any final text response
+
+The "selectedText" you pass to "addInlineComment" must be an exact verbatim substring of the document.`
+
+  await generateText({
+    model: anthropic("claude-sonnet-4-6"),
+    system: systemPrompt,
+    prompt: "Please review the document now.",
+    stopWhen: stepCountIs(4),
+    tools: {
+      addInlineComment: {
+        description:
+          "Attach an inline comment to a specific passage of text in the document. The selectedText must appear verbatim in the document.",
+        inputSchema: z.object({
+          selectedText: z
+            .string()
+            .describe("The exact text substring to annotate (copied verbatim from the document)."),
+          commentText: z.string().describe("The editorial comment to attach to this passage."),
+        }),
+        execute: async (input: { selectedText: string; commentText: string }) => {
+          if (!document.content?.includes(input.selectedText)) {
+            return { success: false, error: "selectedText not found verbatim in document." }
+          }
+          await createComment({
+            id: crypto.randomUUID(),
+            documentId,
+            authorId: AI_EDITOR_USER_ID,
+            text: input.commentText,
+            createdAt: Date.now(),
+            resolved: false,
+            type: "inline",
+            replies: [],
+            selectedText: input.selectedText,
+          })
+          return { success: true }
+        },
+      },
+
+      addDocumentComment: {
+        description: "Add a general editorial comment about the document as a whole.",
+        inputSchema: z.object({
+          commentText: z.string().describe("The general comment to add."),
+        }),
+        execute: async (input: { commentText: string }) => {
+          await createComment({
+            id: crypto.randomUUID(),
+            documentId,
+            authorId: AI_EDITOR_USER_ID,
+            text: input.commentText,
+            createdAt: Date.now(),
+            resolved: false,
+            type: "document",
+            replies: [],
+          })
+          return { success: true }
+        },
+      },
+
+      finishReview: {
+        description: "Call this when you have finished reviewing the document.",
+        inputSchema: z.object({}),
+        execute: async (_input: Record<string, never>) => ({ done: true }),
+      },
+    },
+  })
 }

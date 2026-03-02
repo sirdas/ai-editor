@@ -14,7 +14,7 @@ import {
   deleteComment as dbDeleteComment,
   type CommentRecord,
 } from "./db"
-import { processCommentWithAI, ensureAiEditorUser } from "./ai-editor"
+import { processCommentWithAI, ensureAiEditorUser, reviewDocumentWithAI } from "./ai-editor"
 
 export const fetchDocuments = createServerFn({ method: "GET" }).handler(async () => {
   return getDocuments()
@@ -151,5 +151,13 @@ export const deleteCommentFn = createServerFn({ method: "POST" })
   .inputValidator((id: string) => id)
   .handler(async ({ data: id }) => {
     await dbDeleteComment(id)
+    return { success: true }
+  })
+
+export const requestAiReviewFn = createServerFn({ method: "POST" })
+  .inputValidator((documentId: string) => documentId)
+  .handler(async ({ data: documentId }) => {
+    ensureAiEditorUser().catch(console.error)
+    reviewDocumentWithAI(documentId).catch(console.error)
     return { success: true }
   })
