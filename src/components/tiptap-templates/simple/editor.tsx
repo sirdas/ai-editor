@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { EditorContent, EditorContext, useCurrentEditor, useEditorState, useEditor } from "@tiptap/react"
 import "tippy.js/dist/tippy.css"
 import { Decoration, DecorationSet } from "@tiptap/pm/view"
@@ -20,7 +20,10 @@ import { Selection } from "@tiptap/extensions"
 import { Mark, mergeAttributes } from "@tiptap/core"
 
 // --- Collaboration & Yjs ---
-// Removed Yjs/Collaboration from this component as it's now DB-backed.
+import Collaboration from "@tiptap/extension-collaboration"
+import CollaborationCaret from "@tiptap/extension-collaboration-caret"
+import { HocuspocusProvider } from "@hocuspocus/provider"
+import * as Y from "yjs"
 
 import { MessageSquarePlus, MessageSquare, X, Trash2, CheckCircle2, RotateCcw, Plus, FileText, User, Sparkles, ChevronLeft, ChevronRight } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -650,6 +653,25 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
   // Track the last time the user made a local edit so we don't overwrite in-progress typing
   const lastUserEditRef = useRef<number>(0)
 
+  // Per-document Yjs awareness for colored carets (no document sync — content stays DB-backed)
+  const { ydoc, caretProvider } = useMemo(() => {
+    const ydoc = new Y.Doc()
+    const caretProvider = new HocuspocusProvider({
+      url: "wss://xk2o6wwm.collab.tiptap.cloud",
+      name: `doc-${documentId}`,
+      document: ydoc,
+    })
+    return { ydoc, caretProvider }
+  }, [documentId])
+
+  // Clean up when switching documents or unmounting
+  useEffect(() => {
+    return () => {
+      caretProvider.destroy()
+      ydoc.destroy()
+    }
+  }, [caretProvider, ydoc])
+
   // AI Editor snackbar
   // comment-level: derived from aiPending in DB (set by server, cleared when AI finishes)
   // review-level: local state since review creates new comments rather than updating existing ones
@@ -786,8 +808,22 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
           openOnClick: false,
           enableClickSelection: true,
         },
+        undoRedo: false,
       }),
-      
+      Collaboration.configure({ document: ydoc }),
+      CollaborationCaret.configure({
+        provider: caretProvider,
+        user: (() => {
+          try {
+            const stored = localStorage.getItem("currentUser")
+            if (stored) {
+              const u = JSON.parse(stored)
+              if (u.name && u.color) return { name: u.name, color: u.color }
+            }
+          } catch {}
+          return { name: getRandomName(), color: getRandomColor() }
+        })(),
+      }),
 
       HorizontalRule,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
@@ -807,7 +843,7 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
         onError: (error: any) => console.error("Upload failed:", error),
       }),
     ],
-  })
+  }, [documentId])
 
   // Sync editor content when jumping to a new document
   useEffect(() => {
@@ -969,12 +1005,16 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
     }
   }, [editor])
 
-  // Save current user to localStorage and emit to editor
+  // Save current user to localStorage and update CollaborationCaret awareness
+  useEffect(() => {
+    if (editor && currentUser) {
+      localStorage.setItem("currentUser", JSON.stringify(currentUser))
+      editor.commands.updateUser({ name: currentUser.name, color: currentUser.color })
+    }
+  }, [editor, currentUser])
+
   useEffect(() => {
     if (editor) {
-      if (currentUser) {
-        localStorage.setItem("currentUser", JSON.stringify(currentUser))
-      }
       // Sync comments to extension storage for decoration visibility
       if ((editor.storage as any).activeCommentHighlight) {
         ;(editor.storage as any).activeCommentHighlight.comments = comments
@@ -982,7 +1022,7 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
         editor.view.dispatch(editor.state.tr)
       }
     }
-  }, [editor, currentUser, comments])
+  }, [editor, comments])
 
   const handleResolveComment = async (id: string) => {
     const comment = comments.find(c => c.id === id)
