@@ -25,9 +25,10 @@ import { Mark, mergeAttributes } from "@tiptap/core"
 import { MessageSquarePlus, MessageSquare, X, Trash2, CheckCircle2, RotateCcw, Plus, FileText, User } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  fetchDocuments, updateDocumentFn, addDocumentFn, deleteDocumentFn,
-  fetchUserFn, createUserFn, updateUserFn, fetchCommentsFn, createCommentFn, updateCommentFn, deleteCommentFn as serverDeleteCommentFn
+  fetchDocuments, fetchDocument, updateDocumentFn, addDocumentFn, deleteDocumentFn,
+  fetchUserFn, createUserFn, updateUserFn, fetchCommentsFn, createCommentFn, addReplyFn, updateCommentFn, deleteCommentFn as serverDeleteCommentFn
 } from "@/lib/server-functions"
+import { AI_EDITOR_USER_ID } from "@/lib/ai-editor-constants"
 import { useNavigate } from "@tanstack/react-router"
 
 // --- UI Primitives ---
@@ -377,10 +378,16 @@ const CommentSidebar = ({
 
               {comment.replies.length > 0 && (
                 <div className="comment-replies">
-                  {comment.replies.map((reply) => (
-                    <div key={reply.id} className="reply-item">
+                  {comment.replies.slice().sort((a, b) => a.createdAt - b.createdAt).map((reply) => (
+                    <div key={reply.id} className={`reply-item ${reply.authorId === AI_EDITOR_USER_ID ? "ai-reply" : ""}`}>
                       <div className="reply-meta">
-                        <span className="reply-author">{reply.authorName || "Anonymous"}</span>
+                        <div
+                          className="author-avatar author-avatar--small"
+                          style={{ backgroundColor: reply.authorColor ?? "#ccc" }}
+                        >
+                          {(reply.authorName ?? "A")[0]}
+                        </div>
+                        <span className="reply-author">{reply.authorName ?? "Anonymous"}</span>
                       </div>
                       <div className="reply-text">{reply.text}</div>
                     </div>
@@ -614,15 +621,53 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
 
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">("main")
 
-  // Comments Management
-  const { data: comments = [], refetch: refetchComments } = useQuery({
+  // Comments Management — poll every 3s to pick up AI Editor replies
+  const { data: comments = [] } = useQuery({
     queryKey: ['comments', documentId],
     queryFn: () => fetchCommentsFn({ data: documentId }),
+    refetchInterval: 3000,
   })
+
+  // Poll document content so AI-driven edits appear without a page refresh
+  const { data: liveDocument } = useQuery({
+    queryKey: ['document', documentId],
+    queryFn: () => fetchDocument({ data: documentId }),
+    refetchInterval: 3000,
+  })
+
+  // Track the last time the user made a local edit so we don't overwrite in-progress typing
+  const lastUserEditRef = useRef<number>(0)
+
+  // AI Editor snackbar
+  const [aiProcessing, setAiProcessing] = useState(false)
+  const aiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevCommentsRef = useRef<CommentData[]>([])
+
+  const startAiProcessing = () => {
+    setAiProcessing(true)
+    if (aiTimeoutRef.current) clearTimeout(aiTimeoutRef.current)
+    aiTimeoutRef.current = setTimeout(() => setAiProcessing(false), 30_000)
+  }
+  const stopAiProcessing = () => {
+    setAiProcessing(false)
+    if (aiTimeoutRef.current) { clearTimeout(aiTimeoutRef.current); aiTimeoutRef.current = null }
+  }
+
+  // Hide snackbar when a new AI reply appears in any comment thread
+  useEffect(() => {
+    const prev = prevCommentsRef.current
+    const hasNewAiReply = comments.some((comment) => {
+      const prevComment = prev.find((c) => c.id === comment.id)
+      const prevReplyCount = prevComment ? prevComment.replies.length : 0
+      return comment.replies.slice(prevReplyCount).some((r) => r.authorId === AI_EDITOR_USER_ID)
+    })
+    if (hasNewAiReply) stopAiProcessing()
+    prevCommentsRef.current = comments
+  }, [comments])
 
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [isNavigatorOpen, setIsNavigatorOpen] = useState(true)
+  const [isNavigatorOpen, setIsNavigatorOpen] = useState(false)
   const [isDrafting, setIsDrafting] = useState(false)
   const [draftComment, setDraftComment] = useState("")
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -631,6 +676,10 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
   useEffect(() => {
     setTitle(initialTitle)
   }, [documentId, initialTitle])
+
+  useEffect(() => {
+    document.title = title || "ai-editor"
+  }, [title])
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -731,11 +780,12 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
     }
   }, [documentId, initialContent, editor])
 
-  // Save editor content on changes
+  // Save editor content on changes and record the edit timestamp
   useEffect(() => {
     if (!editor) return
 
     const handleUpdate = () => {
+      lastUserEditRef.current = Date.now()
       const html = editor.getHTML()
       updateDocumentFn({ data: { id: documentId, content: html } })
     }
@@ -746,6 +796,22 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
       editor.off('update', handleUpdate)
     }
   }, [editor, documentId])
+
+  // Sync AI-driven document edits (content + title) into the editor.
+  // Only runs when the DB content differs from the current editor content AND
+  // the user hasn't typed in the last 2 seconds (to avoid stomping on active typing).
+  useEffect(() => {
+    if (!editor || !liveDocument) return
+    if (Date.now() - lastUserEditRef.current < 2000) return
+    if (liveDocument.content && liveDocument.content !== editor.getHTML()) {
+      editor.commands.setContent(liveDocument.content)
+      stopAiProcessing()
+    }
+    if (liveDocument.title && liveDocument.title !== title) {
+      setTitle(liveDocument.title)
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+    }
+  }, [editor, liveDocument])
 
   const handleAddComment = () => {
     if (!editor) return
@@ -761,6 +827,10 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
   const handlePostDraft = async () => {
     if (!editor || !draftComment.trim() || !currentUser) return
 
+    // Capture selected text while the selection is still active (before the mark is applied)
+    const { from, to, empty } = editor.state.selection
+    const selectedText = empty ? undefined : editor.state.doc.textBetween(from, to, " ")
+
     const id = Date.now().toString()
     const newComment: Omit<CommentData, "authorName" | "authorColor"> = {
       id,
@@ -773,8 +843,9 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
       type: "inline",
     }
 
-    await createCommentFn({ data: newComment })
+    await createCommentFn({ data: { ...newComment, selectedText } })
     queryClient.invalidateQueries({ queryKey: ['comments', documentId] })
+    startAiProcessing()
 
     editor.chain().setMark("comment", { commentId: id }).run()
 
@@ -856,18 +927,17 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
 
   const handleReplyToComment = async (commentId: string, text: string) => {
     if (!currentUser) return
-    const comment = comments.find(c => c.id === commentId)
-    if (comment) {
-      const reply: CommentReply = {
-        id: crypto.randomUUID(),
-        text,
-        authorId: currentUser.id,
-        createdAt: Date.now(),
-      }
-      const newReplies = [...comment.replies, reply]
-      await updateCommentFn({ data: { id: commentId, updates: { replies: newReplies } } })
-      queryClient.invalidateQueries({ queryKey: ["comments", documentId] })
+    const reply: CommentReply = {
+      id: crypto.randomUUID(),
+      text,
+      authorId: currentUser.id,
+      authorName: currentUser.name,
+      authorColor: currentUser.color,
+      createdAt: Date.now(),
     }
+    await addReplyFn({ data: { commentId, documentId, reply } })
+    queryClient.invalidateQueries({ queryKey: ["comments", documentId] })
+    startAiProcessing()
   }
 
   const handleAddDocumentComment = async (text: string) => {
@@ -886,6 +956,7 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
     await createCommentFn({ data: newComment })
     queryClient.invalidateQueries({ queryKey: ["comments", documentId] })
     setActiveCommentId(id)
+    startAiProcessing()
   }
 
   const handleCommentClick = (id: string) => {
@@ -927,6 +998,12 @@ export function Editor({ documentId, initialTitle, initialContent }: { documentI
 
   return (
     <div className={`editor-wrapper ${isSidebarOpen ? "sidebar-visible" : ""}`}>
+      {aiProcessing && (
+        <div className="ai-snackbar">
+          <span className="ai-snackbar-dot" />
+          AI Editor is editing the document. Please wait…
+        </div>
+      )}
       <div className="editor-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Button

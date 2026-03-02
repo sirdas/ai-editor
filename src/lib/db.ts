@@ -126,6 +126,9 @@ export interface CommentReply {
   text: string;
   authorId: string;
   createdAt: number;
+  // Denormalized for display — stored directly in JSONB so no join is needed
+  authorName?: string;
+  authorColor?: string;
 }
 
 export interface CommentRecord {
@@ -150,7 +153,7 @@ export async function getComments(documentId: string): Promise<CommentRecord[]> 
     FROM comments c
     JOIN users u ON c."authorId" = u.id
     WHERE c."documentId" = $1
-    ORDER BY c."createdAt" ASC
+    ORDER BY c.resolved ASC, c."createdAt" DESC
   `, [documentId]);
   
   return result.rows.map(row => ({
