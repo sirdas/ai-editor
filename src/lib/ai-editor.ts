@@ -1,5 +1,14 @@
 import { generateText, stepCountIs } from "ai"
 import { anthropic } from "@ai-sdk/anthropic"
+import { google } from "@ai-sdk/google"
+
+function getAIModel() {
+  const provider = process.env.AI_PROVIDER || "google"
+  if (provider === "anthropic") {
+    return anthropic("claude-sonnet-4-6")
+  }
+  return google("gemini-3.1-flash-lite-preview")
+}
 import { z } from "zod"
 import {
   getDocument,
@@ -106,7 +115,7 @@ ${isAddressed ? "This message is addressed to you — please respond and perform
   let skipped = false
 
   const { text } = await generateText({
-    model: anthropic("claude-sonnet-4-6"),
+    model: getAIModel(),
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
     stopWhen: stepCountIs(5),
@@ -247,7 +256,7 @@ Review the document carefully and annotate it using the tools provided. Be selec
 The "selectedText" you pass to "addInlineComment" must be an exact verbatim substring of the document.`
 
   await generateText({
-    model: anthropic("claude-sonnet-4-6"),
+    model: getAIModel(),
     system: systemPrompt,
     prompt: "Please review the document now.",
     stopWhen: stepCountIs(4),

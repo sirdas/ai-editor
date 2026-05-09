@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.50",
+    "@ai-sdk/google": "^3.0.71",
     "@floating-ui/react": "^0.27.18",
     "@hocuspocus/extension-logger": "^4.0.0",
     "@hocuspocus/provider": "^3.4.4",
