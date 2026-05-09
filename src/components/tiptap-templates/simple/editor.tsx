@@ -161,7 +161,7 @@ export function Editor({
 	const { ydoc, caretProvider } = useMemo(() => {
 		const ydoc = new Y.Doc();
 		const caretProvider = new HocuspocusProvider({
-			url: "wss://xk2o6wwm.collab.tiptap.cloud",
+			url: import.meta.env.VITE_HOCUSPOCUS_URL || "ws://localhost:1234",
 			name: `doc-v2-${documentId}`,
 			document: ydoc,
 			onSynced() {

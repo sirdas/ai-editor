@@ -9,12 +9,15 @@
     "test": "vitest run",
     "format": "biome format",
     "lint": "biome lint",
-    "check": "biome check"
+    "check": "biome check",
+    "start:hocuspocus": "node hocuspocus-server.js"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.50",
     "@floating-ui/react": "^0.27.18",
+    "@hocuspocus/extension-logger": "^4.0.0",
     "@hocuspocus/provider": "^3.4.4",
+    "@hocuspocus/server": "^4.0.0",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-popover": "^1.1.15",
     "@tailwindcss/vite": "^4.1.18",
