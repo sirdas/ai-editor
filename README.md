@@ -1,6 +1,6 @@
 # AI Editor
 
-A collaborative text editor powered by Claude AI. Write documents together with other users and with Claude as an AI co-author — getting inline suggestions, edits, and review comments in real time.
+A collaborative text editor powered by an LLM. Write documents together with other users and with the LLM as an AI co-author — getting inline suggestions, edits, and review comments in real time.
 
 **Live demo:** [ai-editor-eight-kappa.vercel.app](https://ai-editor-eight-kappa.vercel.app/)
 
@@ -22,11 +22,11 @@ To address the AI Editor you can use "@ai-editor":
 ## Features
 
 - **Real-time collaboration** — multiple users can edit the same document simultaneously (powered by Yjs + Hocuspocus)
-- **AI co-authorship** — Claude participates as an author, responding to comments directed at it and making edits when given actionable feedback
-- **Inline comments** — highlight text and leave comments (Google Docs style); Claude can reply and act on them
-- **AI review** — manually request a review from Claude, or let it review changes as they come in
-- **Highlight actions** — select text to trigger Claude actions like translation, coherence improvements, or reorganization
-- **Document instructions** — give Claude context and editorial guidelines per document
+- **AI co-authorship** — the LLM participates as an author, responding to comments directed at it and making edits when given actionable feedback
+- **Inline comments** — highlight text and leave comments (Google Docs style); the LLM can reply and act on them
+- **AI review** — manually request a review from the LLM, or let it review changes as they come in
+- **Highlight actions** — select text to trigger LLM actions like translation, coherence improvements, or reorganization
+- **Document instructions** — give the LLM context and editorial guidelines per document
 - **Multiple documents** — create and switch between documents with a flat file structure
 
 ## Tech stack
