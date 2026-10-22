@@ -57,6 +57,13 @@ function getInitPromise() {
       );
       ALTER TABLE comments ADD COLUMN IF NOT EXISTS "selectedText" TEXT;
       ALTER TABLE comments ADD COLUMN IF NOT EXISTS "aiPending" BOOLEAN DEFAULT FALSE;
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS "ampersandSessionId" TEXT;
+      CREATE TABLE IF NOT EXISTS ampersand_tool_calls (
+        "sessionId" TEXT NOT NULL,
+        "turnId" TEXT NOT NULL,
+        "callId" TEXT NOT NULL,
+        PRIMARY KEY ("sessionId", "turnId", "callId")
+      );
     `)
 			.catch((err) => {
 				console.error("Failed to create documents table:", err);
@@ -286,4 +293,41 @@ export async function updateComment(
 export async function deleteComment(id: string): Promise<void> {
 	await getInitPromise();
 	await pool.query("DELETE FROM comments WHERE id = $1", [id]);
+}
+
+// Ampersand functions
+export async function getAmpersandSessionId(
+	documentId: string,
+): Promise<string | undefined> {
+	await getInitPromise();
+	const result = await pool.query(
+		'SELECT "ampersandSessionId" FROM documents WHERE id = $1',
+		[documentId],
+	);
+	return result.rows[0]?.ampersandSessionId ?? undefined;
+}
+
+export async function setAmpersandSessionId(
+	documentId: string,
+	sessionId: string,
+): Promise<void> {
+	await getInitPromise();
+	await pool.query(
+		'UPDATE documents SET "ampersandSessionId" = $1 WHERE id = $2',
+		[sessionId, documentId],
+	);
+}
+
+/** Returns false if the tool call was already claimed, e.g. by another server instance following the same session */
+export async function claimAmpersandToolCall(
+	sessionId: string,
+	turnId: string,
+	callId: string,
+): Promise<boolean> {
+	await getInitPromise();
+	const result = await pool.query(
+		'INSERT INTO ampersand_tool_calls ("sessionId", "turnId", "callId") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+		[sessionId, turnId, callId],
+	);
+	return result.rowCount === 1;
 }

@@ -21,8 +21,11 @@ import {
   type CommentRecord,
 } from "./db"
 import { AI_EDITOR_USER_ID, AI_EDITOR_NAME, AI_EDITOR_COLOR } from "./ai-editor-constants"
+import { processCommentWithAmpersand, reviewDocumentWithAmpersand } from "./ai-editor-ampersand"
 
 export { AI_EDITOR_USER_ID, AI_EDITOR_NAME, AI_EDITOR_COLOR }
+
+const useAmpersand = () => process.env.AI_PROVIDER === "ampersand"
 
 export async function ensureAiEditorUser() {
   const existing = await getUser(AI_EDITOR_USER_ID)
@@ -60,6 +63,8 @@ export async function processCommentWithAI(params: {
 
   await ensureAiEditorUser()
   await updateComment(comment.id, { aiPending: true })
+
+  if (useAmpersand()) return processCommentWithAmpersand(params)
 
   const [document, allComments] = await Promise.all([
     getDocument(documentId),
@@ -212,6 +217,8 @@ ${isAddressed ? "This message is addressed to you — please respond and perform
 
 export async function reviewDocumentWithAI(documentId: string): Promise<void> {
   await ensureAiEditorUser()
+
+  if (useAmpersand()) return reviewDocumentWithAmpersand(documentId)
 
   const [document, allComments] = await Promise.all([
     getDocument(documentId),
