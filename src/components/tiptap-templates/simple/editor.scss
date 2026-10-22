@@ -95,6 +95,19 @@ body,
   animation: ai-pulse 1.2s ease-in-out infinite;
 }
 
+// Same snackbar in neutral gray, for non-AI status such as a document that's still loading
+.ai-snackbar--neutral {
+  background: var(--tt-gray-light-a-100);
+  border-bottom-color: var(--tt-gray-light-a-200);
+  color: var(--tt-gray-light-600);
+
+  .dark & {
+    background: var(--tt-gray-dark-a-100);
+    border-bottom-color: var(--tt-gray-dark-a-200);
+    color: var(--tt-gray-dark-600);
+  }
+}
+
 @keyframes ai-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.75); }
@@ -663,8 +676,32 @@ body,
   }
 }
 
+// The title input shares a grid cell with an invisible copy of the title (.document-title-sizer),
+// so it grows with its text between the sizer's min and max widths
+.editor-status {
+  display: inline-grid;
+}
+
+.document-title-sizer {
+  grid-area: 1 / 1;
+  min-width: 8rem;
+  max-width: min(36rem, 50vw);
+  overflow: hidden;
+  visibility: hidden;
+  white-space: pre;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+}
+
 .document-title-input {
   all: unset;
+  box-sizing: border-box;
+  grid-area: 1 / 1;
+  // width: 0 keeps the input's default ~20-character width out of the grid sizing; min-width then fills the cell
+  width: 0;
+  min-width: 100%;
+  text-overflow: ellipsis;
   font-size: 1rem;
   font-weight: 600;
   color: var(--tt-theme-text);

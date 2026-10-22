@@ -5,8 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "tippy.js/dist/tippy.css";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { Extension } from "@tiptap/core";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { createDocument, Extension, getHTMLFromFragment } from "@tiptap/core";
 // --- Collaboration & Yjs ---
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
@@ -157,6 +157,10 @@ export function Editor({
 	const initialContentRef = useRef(initialContent);
 	initialContentRef.current = initialContent;
 	const needsSeedRef = useRef(false);
+	// Until the first server sync the editor is empty, so a read-only copy from the DB is shown instead
+	const [isSynced, setIsSynced] = useState(false);
+	// True while the router loads another document's DB record (switching documents)
+	const isRouteLoading = useRouterState({ select: (s) => s.isLoading });
 
 	const { ydoc, caretProvider } = useMemo(() => {
 		const ydoc = new Y.Doc();
@@ -177,6 +181,7 @@ export function Editor({
 						needsSeedRef.current = true;
 					}
 				}
+				setIsSynced(true);
 			},
 		});
 		return { ydoc, caretProvider };
@@ -378,6 +383,19 @@ export function Editor({
 			],
 		},
 		[documentId],
+	);
+
+	// DB content parsed through the editor schema: same markup as the editor, and anything the schema
+	// doesn't allow is dropped, so it's safe to render as HTML
+	const previewHtml = useMemo(
+		() =>
+			editor
+				? getHTMLFromFragment(
+						createDocument(initialContent, editor.schema).content,
+						editor.schema,
+					)
+				: "",
+		[editor, initialContent],
 	);
 
 	// Keep editorRef current; apply any pending seed that arrived before the editor was ready
@@ -661,6 +679,12 @@ export function Editor({
 
 	return (
 		<div className={`editor-wrapper ${isSidebarOpen ? "sidebar-visible" : ""}`}>
+			{(isRouteLoading || !isSynced) && (
+				<div className="ai-snackbar ai-snackbar--neutral">
+					<span className="ai-snackbar-dot" />
+					Loading document…
+				</div>
+			)}
 			{(isAiProcessingComment || reviewSnackbar) && (
 				<div className="ai-snackbar">
 					<span className="ai-snackbar-dot" />
@@ -695,6 +719,9 @@ export function Editor({
 							className="document-title-input"
 							placeholder="Untitled Document"
 						/>
+						<span className="document-title-sizer" aria-hidden="true">
+							{title || "Untitled Document"}
+						</span>
 					</div>
 				</div>
 				<div className="header-actions">
@@ -885,7 +912,17 @@ export function Editor({
 							editor={editor}
 							role="presentation"
 							className="editor-content"
+							style={isSynced ? undefined : { display: "none" }}
 						/>
+						{!isSynced && (
+							<div className="editor-content">
+								<div
+									className="tiptap ProseMirror editor"
+									// biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by the editor schema (see previewHtml)
+									dangerouslySetInnerHTML={{ __html: previewHtml }}
+								/>
+							</div>
+						)}
 					</div>
 				</EditorContext.Provider>
 
